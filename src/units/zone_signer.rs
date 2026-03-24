@@ -60,7 +60,7 @@ use crate::util::{
     AbortOnDrop, serialize_duration_as_secs, serialize_instant_as_duration_secs,
     serialize_opt_duration_as_secs,
 };
-use crate::zone::{HistoricalEvent, HistoricalEventType, PipelineMode, Zone, ZoneHandle};
+use crate::zone::{HistoricalEvent, HistoricalEventType, Zone, ZoneHandle};
 
 // Re-signing zones before signatures expire works as follows:
 // - compute when the first zone needs to be re-signed. Loop over unsigned
@@ -325,13 +325,6 @@ impl ZoneSigner {
         let (last_signed_serial, policy) = {
             // Use a block to make sure that the mutex is clearly dropped.
             let zone_state = zone.state.lock().unwrap();
-
-            // Do NOT sign a zone that is halted.
-            if zone_state.pipeline_mode != PipelineMode::Running {
-                // TODO: This accidentally sets an existing soft-halt to a hard-halt.
-                // return Err(SignerError::PipelineIsHalted);
-                return Ok(());
-            }
 
             let last_signed_serial = zone_state
                 .find_last_event(HistoricalEventType::SigningSucceeded, None)
@@ -928,14 +921,6 @@ impl ZoneSigner {
                 trigger: trigger.into(),
             },
             Some(domain::base::Serial(serial.into())),
-        );
-
-        // Notify the review server that the zone is ready.
-        info!("Instructing review server to publish the signed zone");
-        center.signed_review_server.on_seek_approval_for_zone(
-            center,
-            zone,
-            domain::base::Serial(serial.into()),
         );
 
         Ok(())
@@ -1633,6 +1618,7 @@ pub fn load_binary_file(path: &Path) -> Vec<u8> {
     bytes
 }
 
+#[derive(Clone, Debug)]
 pub enum SignerError {
     SoaNotFound,
     SignerNotReady,
